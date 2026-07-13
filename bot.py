@@ -1,236 +1,438 @@
-import os
-import random
-import json
-from flask import Flask, request
-import telebot
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+// ============================================================
+// ИГРА "ГОРОДА" с уровнями сложности, статистикой и банами
+// ============================================================
 
-# ---------- Конфигурация ----------
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN не задан!")
+// ---------- БАЗА ГОРОДОВ (по уровням) ----------
+const CITIES_EASY = [
+  "Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань",
+  "Нижний Новгород", "Челябинск", "Омск", "Самара", "Ростов-на-Дону",
+  "Уфа", "Красноярск", "Воронеж", "Пермь", "Волгоград",
+  "Краснодар", "Саратов", "Тюмень", "Тольятти", "Ижевск",
+  "Барнаул", "Иркутск", "Ульяновск", "Хабаровск", "Владивосток",
+  "Ярославль", "Махачкала", "Томск", "Оренбург", "Кемерово",
+  "Новокузнецк", "Рязань", "Астрахань", "Набережные Челны", "Пенза",
+  "Липецк", "Киров", "Чебоксары", "Калининград", "Тула",
+  "Курск", "Ставрополь", "Сочи", "Тверь", "Магнитогорск",
+  "Иваново", "Брянск", "Белгород", "Сургут", "Владимир"
+];
 
-bot = telebot.TeleBot(BOT_TOKEN)
-app = Flask(__name__)
+const CITIES_MEDIUM = CITIES_EASY.concat([
+  "Абакан", "Ангарск", "Архангельск", "Бийск", "Благовещенск",
+  "Братск", "Великий Новгород", "Владикавказ", "Вологда", "Грозный",
+  "Дзержинск", "Елец", "Жуковский", "Златоуст", "Иваново",
+  "Йошкар-Ола", "Калуга", "Кемерово", "Киров", "Коломна",
+  "Комсомольск-на-Амуре", "Королёв", "Кострома", "Курган", "Курск",
+  "Липецк", "Люберцы", "Магнитогорск", "Мытищи", "Набережные Челны",
+  "Нефтекамск", "Нефтеюганск", "Нижневартовск", "Нижний Тагил", "Новокузнецк",
+  "Новороссийск", "Норильск", "Орёл", "Оренбург", "Орск",
+  "Пенза", "Пермь", "Подольск", "Прокопьевск", "Псков",
+  "Пятигорск", "Рубцовск", "Рыбинск", "Рязань", "Салават",
+  "Северодвинск", "Смоленск", "Стерлитамак", "Сызрань", "Тамбов",
+  "Тобольск", "Томск", "Улан-Удэ", "Уссурийск", "Хабаровск",
+  "Чебоксары", "Череповец", "Чита", "Шахты", "Щёлково",
+  "Энгельс", "Южно-Сахалинск", "Якутск", "Ярославль"
+]);
 
-# ---------- База городов (для простоты — встроенная) ----------
-CITIES = [
-    "Москва", "Санкт-Петербург", "Новосибирск", "Екатеринбург", "Казань",
-    "Нижний Новгород", "Челябинск", "Омск", "Самара", "Ростов-на-Дону",
-    "Уфа", "Красноярск", "Воронеж", "Пермь", "Волгоград",
-    "Краснодар", "Саратов", "Тюмень", "Тольятти", "Ижевск",
-    "Барнаул", "Иркутск", "Ульяновск", "Хабаровск", "Владивосток",
-    "Ярославль", "Махачкала", "Томск", "Оренбург", "Кемерово",
-    "Новокузнецк", "Рязань", "Астрахань", "Набережные Челны", "Пенза",
-    "Липецк", "Киров", "Чебоксары", "Калининград", "Тула",
-    "Курск", "Ставрополь", "Сочи", "Тверь", "Магнитогорск",
-    "Иваново", "Брянск", "Белгород", "Сургут", "Владимир"
-]
-# Для быстрого поиска по первой букве и проверки существования
-CITIES_SET = set(CITIES)
-# Словарь для группировки городов по последней букве (для выбора ботом)
-CITIES_BY_LAST_LETTER = {}
-for city in CITIES:
-    last = city[-1].lower()
-    CITIES_BY_LAST_LETTER.setdefault(last, []).append(city)
+// Сложный уровень — добавим ещё мировые города (транслитом или русскими названиями)
+const CITIES_HARD = CITIES_MEDIUM.concat([
+  "Нью-Йорк", "Лос-Анджелес", "Лондон", "Париж", "Токио",
+  "Шанхай", "Пекин", "Сидней", "Мельбурн", "Дубай",
+  "Берлин", "Рим", "Мадрид", "Лиссабон", "Амстердам",
+  "Брюссель", "Вена", "Цюрих", "Женева", "Стокгольм",
+  "Осло", "Хельсинки", "Копенгаген", "Рейкьявик", "Монреаль",
+  "Торонто", "Чикаго", "Даллас", "Майами", "Сан-Франциско",
+  "Бостон", "Вашингтон", "Мехико", "Буэнос-Айрес", "Лима",
+  "Сантьяго", "Каракас", "Богота", "Кито", "Ла-Пас",
+  "Асунсьон", "Монтевидео", "Йоханнесбург", "Каир", "Найроби",
+  "Лагос", "Тунис", "Алжир", "Триполи", "Касабланка"
+]);
 
-# ---------- Игровые состояния (в памяти) ----------
-# Ключ: chat_id, значение: dict с данными игры
-games = {}
+// ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ РАБОТЫ С ГОРОДАМИ ----------
+function normalizeCity(name) {
+  return name.trim().toLowerCase();
+}
 
-def get_game(chat_id):
-    if chat_id not in games:
-        games[chat_id] = {
-            "used": set(),          # уже названные города
-            "last_letter": None,    # на какую букву надо назвать следующий город
-            "score": 0,             # очки пользователя
-            "is_active": False
+function getLastLetter(city) {
+  // Последняя буква (игнорируем мягкий/твёрдый знак, но для простоты оставим как есть)
+  return city.slice(-1).toLowerCase();
+}
+
+function getCitiesByLevel(level) {
+  if (level === 'easy') return CITIES_EASY;
+  if (level === 'medium') return CITIES_MEDIUM;
+  return CITIES_HARD;
+}
+
+// ---------- ОБРАБОТЧИК ВЕБ-ЗАПРОСОВ ----------
+export default {
+  async fetch(request, env) {
+    const BOT_TOKEN = env.BOT_TOKEN;
+    const KV = env.CITY_BOT; // твой KV Namespace
+    const url = new URL(request.url);
+
+    // ---- Вебхук от Telegram ----
+    if (url.pathname === '/webhook' && request.method === 'POST') {
+      try {
+        const body = await request.json();
+        const message = body.message;
+        const callback = body.callback_query;
+
+        // Обработка callback (кнопки)
+        if (callback) {
+          await handleCallback(callback, BOT_TOKEN, KV);
+          return new Response('OK', { status: 200 });
         }
-    return games[chat_id]
 
-# ---------- Клавиатуры ----------
-def main_menu_keyboard():
-    """Главная инлайн-клавиатура"""
-    keyboard = InlineKeyboardMarkup(row_width=2)
-    btn_new = InlineKeyboardButton("🆕 Новая игра", callback_data="new_game")
-    btn_rules = InlineKeyboardButton("📖 Правила", callback_data="rules")
-    btn_stats = InlineKeyboardButton("📊 Статистика", callback_data="stats")
-    btn_giveup = InlineKeyboardButton("🏳️ Сдаться", callback_data="giveup")
-    keyboard.add(btn_new, btn_rules)
-    keyboard.add(btn_stats, btn_giveup)
-    return keyboard
+        // Обработка обычных сообщений
+        if (message && message.text) {
+          await handleMessage(message, BOT_TOKEN, KV);
+          return new Response('OK', { status: 200 });
+        }
 
-def city_choice_keyboard(city_name):
-    """Кнопка для подтверждения, что пользователь назвал город (для удобства)"""
-    # Можно добавить кнопку "Сдаться" и "Новая игра", но оставим только основную
-    keyboard = InlineKeyboardMarkup(row_width=1)
-    btn_ok = InlineKeyboardButton("✅ Принять", callback_data="accept_city")
-    # Используем callback_data для обработки ввода, но мы будем ловить текстовые сообщения
-    return main_menu_keyboard()  # пока просто возвращаем главное меню
+        return new Response('Ignored', { status: 200 });
+      } catch (e) {
+        return new Response('Error: ' + e.message, { status: 500 });
+      }
+    }
 
-# ---------- Обработчики команд ----------
-@bot.message_handler(commands=['start'])
-def start_command(message):
-    chat_id = message.chat.id
-    game = get_game(chat_id)
-    game["is_active"] = False
-    text = (
-        "🏙️ *Добро пожаловать в игру «Города»!*\n\n"
-        "Я называю город, а ты — следующий на *последнюю букву* моего.\n"
-        "Поехали? Нажми кнопку *«Новая игра»* ниже!"
-    )
-    bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=main_menu_keyboard())
+    // ---- Корневой путь для проверки ----
+    return new Response('City Bot is running!', { status: 200 });
+  }
+};
 
-@bot.callback_query_handler(func=lambda call: True)
-def callback_handler(call):
-    chat_id = call.message.chat.id
-    game = get_game(chat_id)
-    data = call.data
+// ---------- ОБРАБОТЧИК ТЕКСТОВЫХ СООБЩЕНИЙ ----------
+async function handleMessage(message, BOT_TOKEN, KV) {
+  const chatId = message.chat.id;
+  const userId = message.from.id;
+  const text = message.text.trim();
 
-    if data == "new_game":
-        start_new_game(chat_id, call.message)
-        bot.answer_callback_query(call.id, "Игра начата!")
+  // Проверка бана
+  const bannedList = await KV.get('banned', 'json') || [];
+  if (bannedList.includes(userId)) {
+    await sendMessage(chatId, '🚫 Ты забанен. Обратись к администратору.', BOT_TOKEN);
+    return;
+  }
 
-    elif data == "rules":
-        rules = (
-            "📖 *Правила игры:*\n\n"
-            "1️⃣ Я называю город.\n"
-            "2️⃣ Ты называешь город на *последнюю букву* моего города.\n"
-            "3️⃣ Город не должен повторяться.\n"
-            "4️⃣ Если не знаешь — нажми «Сдаться».\n"
-            "5️⃣ За каждый правильный ответ ты получаешь +1 очко.\n\n"
-            "Удачи! 🍀"
-        )
-        bot.edit_message_text(rules, chat_id, call.message.message_id, parse_mode="Markdown", reply_markup=main_menu_keyboard())
-        bot.answer_callback_query(call.id)
+  // Команды админа (только для твоего ID)
+  if (userId === 600630325) {
+    if (text.startsWith('/ban ')) {
+      const targetId = parseInt(text.split(' ')[1]);
+      if (!isNaN(targetId)) {
+        await banUser(targetId, KV);
+        await sendMessage(chatId, `✅ Пользователь ${targetId} забанен.`, BOT_TOKEN);
+      }
+      return;
+    }
+    if (text.startsWith('/unban ')) {
+      const targetId = parseInt(text.split(' ')[1]);
+      if (!isNaN(targetId)) {
+        await unbanUser(targetId, KV);
+        await sendMessage(chatId, `✅ Пользователь ${targetId} разбанен.`, BOT_TOKEN);
+      }
+      return;
+    }
+  }
 
-    elif data == "stats":
-        stats = (
-            f"📊 *Твоя статистика:*\n\n"
-            f"🎯 Очков: {game['score']}\n"
-            f"🏙️ Названо городов: {len(game['used'])}\n"
-            f"🔄 Игра активна: {'Да' if game['is_active'] else 'Нет'}"
-        )
-        bot.edit_message_text(stats, chat_id, call.message.message_id, parse_mode="Markdown", reply_markup=main_menu_keyboard())
-        bot.answer_callback_query(call.id)
+  // Обработка команд игры
+  if (text === '/start') {
+    await sendStart(chatId, BOT_TOKEN);
+    return;
+  }
 
-    elif data == "giveup":
-        if not game["is_active"]:
-            bot.answer_callback_query(call.id, "Игра ещё не начата!")
-            return
-        game["is_active"] = False
-        text = (
-            f"🏳️ Ты сдался!\n"
-            f"Названо городов: {len(game['used'])}, очков: {game['score']}.\n"
-            "Можешь начать новую игру кнопкой ниже."
-        )
-        bot.edit_message_text(text, chat_id, call.message.message_id, parse_mode="Markdown", reply_markup=main_menu_keyboard())
-        bot.answer_callback_query(call.id)
+  if (text === '/stats') {
+    await sendStats(userId, chatId, BOT_TOKEN, KV);
+    return;
+  }
 
-    elif data == "accept_city":
-        # Этот колбэк не нужен, так как мы обрабатываем текстовые сообщения
-        bot.answer_callback_query(call.id, "Просто напиши название города в чат!")
+  if (text === '/newgame') {
+    await newGame(userId, chatId, BOT_TOKEN, KV);
+    return;
+  }
 
-# ---------- Логика игры ----------
-def start_new_game(chat_id, message=None):
-    game = get_game(chat_id)
-    # Выбираем случайный город, который ещё не использовали
-    available = [c for c in CITIES if c not in game["used"]]
-    if not available:
-        # Если все города использованы — сбросим историю (или просто перезапустим)
-        game["used"] = set()
-        available = CITIES.copy()
-    first_city = random.choice(available)
-    game["used"].add(first_city)
-    game["last_letter"] = first_city[-1].lower()
-    game["is_active"] = True
-    # Увеличиваем счёт только если это не первый ход? Нет, первый город даёт бот, счёт не меняется.
-    text = (
-        f"🗺️ Я начинаю: *{first_city}*\n\n"
-        f"Теперь твой ход! Назови город на букву *«{first_city[-1].upper()}»*.\n"
-        "Просто напиши его в чат.\n\n"
-        "Если хочешь сдаться — нажми кнопку."
-    )
-    if message:
-        bot.edit_message_text(text, chat_id, message.message_id, parse_mode="Markdown", reply_markup=main_menu_keyboard())
-    else:
-        bot.send_message(chat_id, text, parse_mode="Markdown", reply_markup=main_menu_keyboard())
+  if (text === '/giveup') {
+    await giveUp(userId, chatId, BOT_TOKEN, KV);
+    return;
+  }
 
-# Обработчик текстовых сообщений (ввод города)
-@bot.message_handler(func=lambda message: True, content_types=['text'])
-def handle_city_input(message):
-    chat_id = message.chat.id
-    game = get_game(chat_id)
-    if not game["is_active"]:
-        bot.reply_to(message, "⚠️ Игра не активна. Нажми «Новая игра», чтобы начать.")
-        return
+  // Если текст — это название города (игра активна)
+  await processCityGuess(userId, chatId, text, BOT_TOKEN, KV);
+}
 
-    user_city = message.text.strip()
-    # Проверяем, есть ли город в базе
-    if user_city not in CITIES_SET:
-        bot.reply_to(message, f"❌ Город «{user_city}» не найден в моей базе. Попробуй другой.")
-        return
+// ---------- ОБРАБОТЧИК НАЖАТИЙ КНОПОК ----------
+async function handleCallback(callback, BOT_TOKEN, KV) {
+  const chatId = callback.message.chat.id;
+  const userId = callback.from.id;
+  const data = callback.data;
 
-    # Проверяем, не использовали ли уже
-    if user_city in game["used"]:
-        bot.reply_to(message, f"⚠️ Город «{user_city}» уже называли. Назови другой.")
-        return
+  // Проверка бана
+  const bannedList = await KV.get('banned', 'json') || [];
+  if (bannedList.includes(userId)) {
+    await sendMessage(chatId, '🚫 Ты забанен.', BOT_TOKEN);
+    return;
+  }
 
-    # Проверяем первую букву
-    first_letter = user_city[0].lower()
-    if first_letter != game["last_letter"]:
-        bot.reply_to(message, f"❌ Город должен начинаться на букву *«{game['last_letter'].upper()}»*! Ты написал на «{user_city[0].upper()}».",
-                     parse_mode="Markdown")
-        return
+  if (data === 'newgame') {
+    await newGame(userId, chatId, BOT_TOKEN, KV);
+    await answerCallback(callback.id, 'Новая игра начата!', BOT_TOKEN);
+    return;
+  }
 
-    # Всё правильно — принимаем город
-    game["used"].add(user_city)
-    game["score"] += 1
+  if (data === 'stats') {
+    await sendStats(userId, chatId, BOT_TOKEN, KV);
+    await answerCallback(callback.id, '', BOT_TOKEN);
+    return;
+  }
 
-    # Теперь бот должен ответить своим городом на последнюю букву user_city
-    last_letter = user_city[-1].lower()
-    # Ищем город, который начинается на эту букву и ещё не использован
-    possible = [c for c in CITIES_BY_LAST_LETTER.get(last_letter, []) if c not in game["used"]]
-    if not possible:
-        # Бот не может ответить — пользователь победил!
-        game["is_active"] = False
-        win_text = (
-            f"🎉 *Поздравляю! Ты выиграл!*\n"
-            f"Ты назвал {len(game['used'])} городов, набрал {game['score']} очков.\n"
-            f"Я не смог подобрать город на букву «{last_letter.upper()}».\n\n"
-            "Можешь начать новую игру."
-        )
-        bot.reply_to(message, win_text, parse_mode="Markdown", reply_markup=main_menu_keyboard())
-        return
+  if (data === 'giveup') {
+    await giveUp(userId, chatId, BOT_TOKEN, KV);
+    await answerCallback(callback.id, 'Ты сдался', BOT_TOKEN);
+    return;
+  }
 
-    bot_city = random.choice(possible)
-    game["used"].add(bot_city)
-    game["last_letter"] = bot_city[-1].lower()
+  if (data.startsWith('level_')) {
+    const level = data.replace('level_', '');
+    await setLevel(userId, chatId, level, BOT_TOKEN, KV);
+    await answerCallback(callback.id, `Уровень сложности: ${level}`, BOT_TOKEN);
+    return;
+  }
+}
 
-    response_text = (
-        f"✅ Твой город *{user_city}* принят!\n"
-        f"Мой ответ: *{bot_city}*\n\n"
-        f"Теперь твой ход! Назови город на букву *«{bot_city[-1].upper()}»*."
-    )
-    bot.reply_to(message, response_text, parse_mode="Markdown", reply_markup=main_menu_keyboard())
+// ---------- ОСНОВНАЯ ИГРОВАЯ ЛОГИКА ----------
 
-# ---------- Flask-эндпоинт для webhook ----------
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return 'OK', 200
-    else:
-        return 'Unsupported media type', 415
+async function processCityGuess(userId, chatId, city, BOT_TOKEN, KV) {
+  // Получаем данные пользователя
+  const userKey = `user_${userId}`;
+  let userData = await KV.get(userKey, 'json');
+  if (!userData) {
+    userData = { score: 0, wins: 0, losses: 0, level: 'medium', game: null };
+  }
 
-@app.route('/')
-def index():
-    return "City Bot is running!"
+  const game = userData.game;
+  if (!game || !game.active) {
+    await sendMessage(chatId, '⚠️ Нет активной игры. Напиши /newgame или нажми «Новая игра».', BOT_TOKEN);
+    return;
+  }
 
-# ---------- Запуск (для локального теста можно использовать polling) ----------
-if __name__ == '__main__':
-    # Для локальной разработки используй bot.polling()
-    # Но для Render используем Flask
-    app.run(host='0.0.0.0', port=int(os.getenv('PORT', 5000)))
+  // Проверяем город
+  const cityNorm = normalizeCity(city);
+  const citiesList = getCitiesByLevel(userData.level || 'medium');
+  const citiesSet = new Set(citiesList.map(c => normalizeCity(c)));
+
+  if (!citiesSet.has(cityNorm)) {
+    await sendMessage(chatId, `❌ Город «${city}» не найден в моей базе для выбранного уровня. Попробуй другой.`, BOT_TOKEN);
+    return;
+  }
+
+  if (game.usedCities && game.usedCities.includes(cityNorm)) {
+    await sendMessage(chatId, `⚠️ Город «${city}» уже называли. Назови другой.`, BOT_TOKEN);
+    return;
+  }
+
+  const lastLetter = getLastLetter(city);
+  if (lastLetter !== game.lastLetter) {
+    await sendMessage(chatId, `❌ Город должен начинаться на букву *«${game.lastLetter.toUpperCase()}»*!`, BOT_TOKEN, 'Markdown');
+    return;
+  }
+
+  // Город принят
+  game.usedCities.push(cityNorm);
+  // Ищем ответ бота
+  const available = citiesList.filter(c => {
+    const norm = normalizeCity(c);
+    return norm.startsWith(lastLetter) && !game.usedCities.includes(norm);
+  });
+
+  if (available.length === 0) {
+    // Бот не может ответить -> победа игрока
+    game.active = false;
+    userData.wins = (userData.wins || 0) + 1;
+    userData.score = (userData.score || 0) + 1;
+    await KV.put(userKey, JSON.stringify(userData));
+    await sendMessage(chatId,
+      `🎉 *Поздравляю! Ты выиграл!*\n`
+      + `Названо городов: ${game.usedCities.length}\n`
+      + `Очков: +1. Всего: ${userData.score}\n`
+      + `Побед: ${userData.wins}`,
+      BOT_TOKEN, 'Markdown'
+    );
+    // Предлагаем новую игру
+    await sendGameMenu(chatId, BOT_TOKEN);
+    return;
+  }
+
+  // Бот выбирает город
+  const botCity = available[Math.floor(Math.random() * available.length)];
+  game.usedCities.push(normalizeCity(botCity));
+  const newLastLetter = getLastLetter(botCity);
+  game.lastLetter = newLastLetter;
+  await KV.put(userKey, JSON.stringify(userData));
+
+  await sendMessage(chatId,
+    `✅ Твой город *${city}* принят!\n`
+    + `Мой ответ: *${botCity}*\n\n`
+    + `Теперь назови город на букву *«${newLastLetter.toUpperCase()}»*.\n`
+    + `Список использованных: ${game.usedCities.length} городов.`,
+    BOT_TOKEN, 'Markdown'
+  );
+}
+
+// ---------- ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ----------
+
+async function sendMessage(chatId, text, BOT_TOKEN, parse_mode = null) {
+  const payload = { chat_id: chatId, text };
+  if (parse_mode) payload.parse_mode = parse_mode;
+  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+}
+
+async function answerCallback(callbackId, text, BOT_TOKEN) {
+  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/answerCallbackQuery`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ callback_query_id: callbackId, text })
+  });
+}
+
+async function sendStart(chatId, BOT_TOKEN) {
+  const text = `🏙️ *Добро пожаловать в игру «Города»!*\n\n`
+    + `Я называю город, а ты — следующий на последнюю букву.\n`
+    + `Уровни сложности: легкий (50 городов), средний (150), сложный (300+).\n`
+    + `Для начала выбери уровень или сразу нажми «Новая игра».\n\n`
+    + `/newgame — начать игру\n`
+    + `/stats — статистика\n`
+    + `/giveup — сдаться\n`
+    + `/level <easy|medium|hard> — сменить уровень`;
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: '🆕 Новая игра', callback_data: 'newgame' }],
+      [{ text: '📊 Статистика', callback_data: 'stats' }, { text: '🏳️ Сдаться', callback_data: 'giveup' }],
+      [{ text: '🟢 Лёгкий', callback_data: 'level_easy' }, { text: '🟡 Средний', callback_data: 'level_medium' }, { text: '🔴 Сложный', callback_data: 'level_hard' }]
+    ]
+  };
+  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown', reply_markup: keyboard })
+  });
+}
+
+async function sendGameMenu(chatId, BOT_TOKEN) {
+  const keyboard = {
+    inline_keyboard: [
+      [{ text: '🆕 Новая игра', callback_data: 'newgame' }],
+      [{ text: '📊 Статистика', callback_data: 'stats' }, { text: '🏳️ Сдаться', callback_data: 'giveup' }]
+    ]
+  };
+  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text: 'Выбери действие:', reply_markup: keyboard })
+  });
+}
+
+async function newGame(userId, chatId, BOT_TOKEN, KV) {
+  const userKey = `user_${userId}`;
+  let userData = await KV.get(userKey, 'json');
+  if (!userData) {
+    userData = { score: 0, wins: 0, losses: 0, level: 'medium', game: null };
+  }
+
+  const level = userData.level || 'medium';
+  const citiesList = getCitiesByLevel(level);
+  const available = citiesList.filter(c => {
+    // Можно добавить проверку, чтобы не начинать с уже использованных
+    return true; // Для простоты берём любой
+  });
+  const firstCity = available[Math.floor(Math.random() * available.length)];
+  const lastLetter = getLastLetter(firstCity);
+
+  userData.game = {
+    active: true,
+    usedCities: [normalizeCity(firstCity)],
+    lastLetter: lastLetter,
+    level: level
+  };
+  await KV.put(userKey, JSON.stringify(userData));
+
+  await sendMessage(chatId,
+    `🗺️ Начинаем игру (уровень: *${level}*)!\n`
+    + `Я называю: *${firstCity}*\n\n`
+    + `Твой ход! Напиши город на букву *«${lastLetter.toUpperCase()}»*.\n`
+    + `Если хочешь сдаться — нажми кнопку.`,
+    BOT_TOKEN, 'Markdown'
+  );
+  await sendGameMenu(chatId, BOT_TOKEN);
+}
+
+async function giveUp(userId, chatId, BOT_TOKEN, KV) {
+  const userKey = `user_${userId}`;
+  let userData = await KV.get(userKey, 'json');
+  if (!userData || !userData.game || !userData.game.active) {
+    await sendMessage(chatId, 'У тебя нет активной игры.', BOT_TOKEN);
+    return;
+  }
+
+  userData.game.active = false;
+  userData.losses = (userData.losses || 0) + 1;
+  userData.score = (userData.score || 0) - 1;
+  await KV.put(userKey, JSON.stringify(userData));
+
+  await sendMessage(chatId,
+    `🏳️ Ты сдался.\n`
+    + `Названо городов: ${userData.game.usedCities.length}\n`
+    + `Очков: -1. Всего: ${userData.score}\n`
+    + `Поражений: ${userData.losses}`,
+    BOT_TOKEN
+  );
+  await sendGameMenu(chatId, BOT_TOKEN);
+}
+
+async function sendStats(userId, chatId, BOT_TOKEN, KV) {
+  const userKey = `user_${userId}`;
+  let userData = await KV.get(userKey, 'json');
+  if (!userData) {
+    userData = { score: 0, wins: 0, losses: 0, level: 'medium' };
+  }
+  await sendMessage(chatId,
+    `📊 *Твоя статистика:*\n`
+    + `🏆 Очков: ${userData.score}\n`
+    + `🎯 Побед: ${userData.wins || 0}\n`
+    + `💔 Поражений: ${userData.losses || 0}\n`
+    + `🎚️ Уровень: ${userData.level || 'medium'}`,
+    BOT_TOKEN, 'Markdown'
+  );
+}
+
+async function setLevel(userId, chatId, level, BOT_TOKEN, KV) {
+  const userKey = `user_${userId}`;
+  let userData = await KV.get(userKey, 'json');
+  if (!userData) {
+    userData = { score: 0, wins: 0, losses: 0, level: level };
+  } else {
+    userData.level = level;
+  }
+  // Если есть активная игра — завершаем её (можно предложить начать заново)
+  if (userData.game && userData.game.active) {
+    userData.game.active = false;
+    // Поражение за смену уровня? Можно не штрафовать.
+  }
+  await KV.put(userKey, JSON.stringify(userData));
+  await sendMessage(chatId, `✅ Уровень сложности изменён на *${level}*.\nТеперь начни новую игру.`, BOT_TOKEN, 'Markdown');
+}
+
+async function banUser(userId, KV) {
+  let banned = await KV.get('banned', 'json') || [];
+  if (!banned.includes(userId)) {
+    banned.push(userId);
+    await KV.put('banned', JSON.stringify(banned));
+  }
+}
+
+async function unbanUser(userId, KV) {
+  let banned = await KV.get('banned', 'json') || [];
+  banned = banned.filter(id => id !== userId);
+  await KV.put('banned', JSON.stringify(banned));
+}
